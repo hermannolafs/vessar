@@ -1,0 +1,5 @@
+# Devenv stuff
+.idea
+
+# Golang
+vendor
