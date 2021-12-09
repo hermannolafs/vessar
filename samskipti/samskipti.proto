@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package samskipti;
+
+option go_package = "github.com/hermannolafs/vessar/samskipti/go;samskipti";
+
+enum ModelName {
+  UNKNOWN_MODEL = 0;
+
+  PEE = 1;
+  POO = 2;
+}
+
+enum HumorType {                               // List of allowed input/output types
+
+  UNKNOWN_TYPE = 0;
+  // Detection types
+  BLOOD = 1;
+  PHLEGM = 2;
+  BLACK_BILE = 3;
+  YELLOW_BILE = 4;
+}
+
+message Humor {
+  HumorType humour_type = 1;
+}
+
+message ModelMetadata {
+  int32 port = 1;                         // The host machine port of the model
+  string ip = 2;                          // Public IP address of the model
+  HumorType humour_type = 3;
+  ModelName model_name = 5;
+}
+
+message Null {}
+// =============================================
+// SERVICES
+// =============================================
+service Heili {
+  rpc register(ModelMetadata) returns (Humor) {}
+  rpc deregister(ModelMetadata) returns (Humor) {}
+}
+
+service Hjarta {
+  rpc gametick(Null) returns (Humor) {}
+}
+
+service Organ {
+  rpc
+}

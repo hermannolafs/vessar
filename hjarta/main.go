@@ -1,58 +1,60 @@
 package main
 
 import (
-	"github.com/streadway/amqp"
-
+	"context"
+	"github.com/logrusorgru/aurora/v3"
+	"google.golang.org/grpc"
 	"hermannolafs/vessar/beinagrind"
-	"hermannolafs/vessar/vessel"
-
+	samskipti "hermannolafs/vessar/samskipti/go"
 	"log"
-	"os"
-	"os/signal"
+	"strconv"
 	"time"
 )
 
-func main() {
-
-	leikur := beinagrind.Leikur{
-		Hnit: beinagrind.Hnit{PosX: 1, PosY: 2},
-	}
-
-	stopChannel := make(chan os.Signal)
-	signal.Notify(stopChannel, os.Interrupt)
-
-	heartChannel, queHello := vessel.DeclareChannelAndQueue(stopChannel)
-
-	forever := make(chan bool)
-
-	log.Printf("this is the leikur: %v", leikur)
-
-	body, _ := leikur.ToBytes()
-
-	log.Printf("this is the bytes: %v", body)
-
-	go func() {
-		for {
-			err := heartChannel.Publish(
-				"",     // exchange
-				queHello.Name, // routing key
-				false,  // mandatory
-				false,  // immediate
-				amqp.Publishing{
-					ContentType: "text/plain",
-					Body:        body,
-				})
-			failOnError(err, "Failed to publish a message")
-
-			time.Sleep(time.Second * 2)
-		}
-	}()
-
-	<-forever
+type Hjarta struct {
+	heili         samskipti.HeiliClient
+	ModelMetadata samskipti.ModelMetadata
 }
 
-func failOnError(err error, msg string) {
-	if err != nil {
-		log.Fatalf("%s: %s", msg, err)
+func main() {
+	hjarta := NewHjarta()
+
+	hjarta.Start()
+}
+
+func NewHjarta() *Hjarta {
+	return &Hjarta{
+		heili: connectHeili(),
+		ModelMetadata: samskipti.ModelMetadata{
+			Port:      beinagrind.HjartaPort,
+			ModelName: 1,
+		},
 	}
+}
+
+func (hjarta Hjarta) Start() {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	registration, err := hjarta.heili.Register(ctx, &hjarta.ModelMetadata)
+	if err != nil {
+		log.Fatalf("could not register to Heili: ", err)
+	}
+
+	log.Print(
+		aurora.Blue(hjarta.ModelMetadata.ModelName),
+		"registering humour was:",
+		aurora.Green(registration.GetHumourType()),
+	)
+}
+
+func connectHeili() samskipti.HeiliClient {
+	log.Printf("connecting heili")
+	heilaConnection, err := grpc.Dial("localhost:"+strconv.Itoa(int(beinagrind.HeiliPort)), grpc.WithInsecure())
+
+	if err != nil {
+		panic(err)
+	}
+
+	return samskipti.NewHeiliClient(heilaConnection)
 }
