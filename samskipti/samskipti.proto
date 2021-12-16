@@ -22,14 +22,18 @@ enum HumorType {                               // List of allowed input/output t
 }
 
 message Humor {
-  HumorType humour_type = 1;
+  HumorType humour = 1;
 }
 
 message ModelMetadata {
   int32 port = 1;                         // The host machine port of the model
   string ip = 2;                          // Public IP address of the model
-  HumorType humour_type = 3;
+  repeated Humor humour_list = 3;
   ModelName model_name = 5;
+}
+
+message ModelMetadataList {
+  repeated ModelMetadata model_metadata_list = 1;
 }
 
 message Null {}
@@ -37,14 +41,11 @@ message Null {}
 // SERVICES
 // =============================================
 service Heili {
-  rpc register(ModelMetadata) returns (Humor) {}
-  rpc deregister(ModelMetadata) returns (Humor) {}
+  rpc register(ModelMetadata) returns (ModelMetadata) {}
+  rpc deregister(ModelMetadata) returns (ModelMetadata) {}
+  rpc getRegisteredModels(Null) returns (ModelMetadataList) {}
 }
 
 service Hjarta {
   rpc gametick(Null) returns (Humor) {}
-}
-
-service Organ {
-  rpc
 }

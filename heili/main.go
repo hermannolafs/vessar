@@ -57,32 +57,50 @@ func (heili *Heili) Start() {
 	}
 }
 
-func (heili *Heili) Register(ctx context.Context, metadata *samskipti.ModelMetadata) (*samskipti.Humor, error) {
+func (heili *Heili) Register(ctx context.Context, metadata *samskipti.ModelMetadata) (*samskipti.ModelMetadata, error) {
 	heili.lock.Lock()
 	defer heili.lock.Unlock()
 	log.Printf("Registering new Hjarta")
 
+	hjartaClient := connectHjartaOnLocalhost(metadata)
+
+	// if there is no list yet, create one
+
+	heili.register(metadata, hjartaClient)
+
+	log.Printf("Current list: \n %+v\n")
+
+	return metadata, nil
+}
+
+func (heili *Heili)register(metadata *samskipti.ModelMetadata, hjartaClient samskipti.HjartaClient) {
+	for _, humour := range metadata.GetHumourList() {
+		log.Printf("Cast it to: %v", humour.GetHumour())
+
+		if _, ok := heili.líffæri[humour.GetHumour()]; !ok {
+			heili.líffæri[humour.GetHumour()] = make([]samskipti.HjartaClient, 0)
+		}
+		heili.líffæri[humour.GetHumour()] = append(heili.líffæri[humour.GetHumour()], hjartaClient)
+	}
+}
+
+func connectHjartaOnLocalhost(metadata *samskipti.ModelMetadata) samskipti.HjartaClient {
 	hjartaConnection, err := grpc.Dial("localhost:"+string(metadata.Port), grpc.WithInsecure())
 
 	if err != nil {
 		panic(err)
 	}
 
-	hjartaClient := samskipti.NewHjartaClient(hjartaConnection)
-
-	// if there is no list yet, create one
-	if _, ok := heili.líffæri[metadata.HumourType]; !ok {
-		heili.líffæri[metadata.HumourType] = make([]samskipti.HjartaClient, 0)
-	}
-
-	// append to slice
-	heili.líffæri[metadata.HumourType] = append(heili.líffæri[metadata.HumourType], hjartaClient)
-
-	return &samskipti.Humor{
-		HumourType: metadata.HumourType,
-	}, nil
+	return samskipti.NewHjartaClient(hjartaConnection)
 }
 
-func (heili *Heili) Deregister(ctx context.Context, metadata *samskipti.ModelMetadata) (*samskipti.Humor, error) {
+func (heili *Heili) Deregister(ctx context.Context, metadata *samskipti.ModelMetadata) (*samskipti.ModelMetadata, error) {
+	
+}
+
+func (heili *Heili) GetRegisteredModels(ctx context.Context, null *samskipti.Null) (*samskipti.ModelMetadataList, error) {
 	panic("implement me")
 }
+
+
+
