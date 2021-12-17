@@ -6,6 +6,7 @@ require (
 	github.com/JoelOtter/termloop v0.0.0-20210806173944-5f7c38744afb
 	github.com/epiclabs-io/winman v0.0.0-20210113192526-493c730b8c71
 	github.com/golang/protobuf v1.5.2 // indirect
+	github.com/kelindar/tile v1.1.0 // indirect
 	github.com/logrusorgru/aurora/v3 v3.0.0 // indirect
 	github.com/nsf/termbox-go v1.1.1 // indirect
 	github.com/rivo/tview v0.0.0-20210601084449-25fe82727029
