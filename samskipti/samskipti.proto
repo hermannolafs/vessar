@@ -25,6 +25,10 @@ message Humor {
   HumorType humour = 1;
 }
 
+message KortBytes {
+  bytes tiles = 1;
+}
+
 message ModelMetadata {
   int32 port = 1;                         // The host machine port of the model
   string ip = 2;                          // Public IP address of the model
@@ -48,4 +52,11 @@ service Heili {
 
 service Hjarta {
   rpc gametick(Null) returns (Humor) {}
+}
+
+service Kort {
+  rpc getKort(Null) returns (KortBytes ) {}
+}
+
+service Skermur {
 }

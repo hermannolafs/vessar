@@ -66,14 +66,14 @@ func (heili *Heili) Register(ctx context.Context, metadata *samskipti.ModelMetad
 
 	// if there is no list yet, create one
 
-	heili.register(metadata, hjartaClient)
+	heili.funcName(metadata, hjartaClient)
 
 	log.Printf("Current list: \n %+v\n")
 
 	return metadata, nil
 }
 
-func (heili *Heili)register(metadata *samskipti.ModelMetadata, hjartaClient samskipti.HjartaClient) {
+func (heili *Heili)funcName(metadata *samskipti.ModelMetadata, hjartaClient samskipti.HjartaClient) {
 	for _, humour := range metadata.GetHumourList() {
 		log.Printf("Cast it to: %v", humour.GetHumour())
 
