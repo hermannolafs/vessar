@@ -24,14 +24,28 @@ func main() {
 }
 
 func NewSkermur() Skermur {
-	skermur := Skermur{
-		kort: connectKort(),
-	}
+	skermur := Skermur{}
 
 	return skermur
 }
 
-func (skermur Skermur) Start() {
+func (skermur *Skermur) Start() {
+	if err := skermur.connectKort(); err != nil {
+		panic(err)
+	}
+
+	for {
+		time.Sleep(time.Second * 3)
+
+		if _, err := skermur.GetKort(); err != nil {
+			log.Print(aurora.BgRed("|ERROR|"), " Could not run GetKort")
+			log.Print(aurora.BgRed(err.Error()))
+		}
+	}
+}
+
+
+func (skermur *Skermur) GetKort() (*tile.Grid, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
@@ -46,21 +60,21 @@ func (skermur Skermur) Start() {
 		aurora.Green(kort.GetTiles()),
 	)
 
-	grid, err := tile.ReadFrom(bytes.NewReader(kort.GetTiles()))
-	if err != nil {
-		panic(err)
-	}
-
-	_ = grid
+	return tile.ReadFrom(bytes.NewReader(kort.GetTiles()))
 }
 
-func connectKort() samskipti.KortClient {
+// TODO timeout here or in Start()?
+func (skermur *Skermur) connectKort() error {
 	log.Printf("connecting to Kort")
-	kortConnection, err := grpc.Dial("localhost:"+strconv.Itoa(int(beinagrind.KortPort)), grpc.WithInsecure())
+
+	kortURL := "localhost:"+strconv.Itoa(int(beinagrind.KortPort))
+	kortConnection, err := grpc.Dial(kortURL, grpc.WithInsecure())
 
 	if err != nil {
-		panic(err)
+		log.Print(aurora.BgRed("Could not connect to kort on URL "), aurora.Green(kortURL))
+		return err
 	}
 
-	return samskipti.NewKortClient(kortConnection)
+	skermur.kort = samskipti.NewKortClient(kortConnection)
+	return err
 }

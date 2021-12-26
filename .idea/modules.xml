@@ -2,6 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
+      <module fileurl="file://$PROJECT_DIR$/../termloop/.idea/termloop.iml" filepath="$PROJECT_DIR$/../termloop/.idea/termloop.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/vessar.iml" filepath="$PROJECT_DIR$/.idea/vessar.iml" />
     </modules>
   </component>

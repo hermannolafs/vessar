@@ -55,7 +55,7 @@ service Hjarta {
 }
 
 service Kort {
-  rpc getKort(Null) returns (KortBytes ) {}
+  rpc getKort(Null) returns (KortBytes) {}
 }
 
 service Skermur {
