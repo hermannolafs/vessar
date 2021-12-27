@@ -2,12 +2,13 @@ package main
 
 import (
 	"fmt"
+	"github.com/gdamore/tcell"
 	"github.com/kelindar/tile"
 	"github.com/logrusorgru/aurora/v3"
-	"github.com/nsf/termbox-go"
-	"hermannolafs/vessar/viewport/input"
 	"log"
+	"os"
 	"strconv"
+	"time"
 )
 
 var (
@@ -30,49 +31,49 @@ func main() {
 
 	playerView := setupPlayerView(grid)
 
-	log.Printf("Initializing Termbox")
-	if err := termbox.Init(); err != nil {
+	screen, err := tcell.NewScreen()
+	if err != nil {
 		panic(err)
 	}
-	termbox.SetOutputMode(termbox.Output256)
-	termbox.SetInputMode(termbox.InputAlt | termbox.InputMouse)
-	defer termbox.Close()
-	log.Printf("Termbox initialized")
+	if err := screen.Init(); err != nil {
+		panic(err)
+	}
 
-	log.Printf("Initializing input listener")
-	playerView.input.Start()
-	defer playerView.input.Stop()
-	log.Printf("Input listener initialized")
+	defStyle := tcell.StyleDefault.
+		Background(tcell.ColorBlue).
+		Foreground(tcell.ColorRed)
 
-mainloop:
+	screen.SetStyle(defStyle)
+
+	// Game Loop
 	for {
-		select {
-		case ev := <-playerView.input.Queue:
-			if ev.Key == termbox.KeyCtrlC {
-				println("GOT CTRL+C")
-				break mainloop
+		screen.Show()
+
+		event := screen.PollEvent()
+
+		switch event := event.(type) {
+		case *tcell.EventResize:
+			screen.Sync()
+		case *tcell.EventKey:
+			if event.Key() == tcell.KeyEscape || event.Key() == tcell.KeyCtrlC {
+				screen.Fini()
+				os.Exit(0)
 			}
 		}
-		playerView.view.Each(printTile)
+		
+		time.Sleep(time.Second * 1)
+		//playerView.view.Each(printTile)
+		playerView.view.Each(func(point tile.Point, t tile.Tile) {
+			screen.SetContent(
+				int(point.X),
+				int(point.Y),
+				'c',
+				nil,
+				defStyle,
+			)
+		})
 	}
 }
-
-func printView(view *tile.View) {
-	view.Each(printTile)
-	_ = termbox.Flush()
-}
-
-func printTile(point tile.Point, t tile.Tile) {
-	termbox.SetCell(
-		int(point.X),
-		int(point.Y),
-		'0',
-		termbox.ColorBlue,
-		termbox.ColorRed,
-	)
-}
-
-
 
 func pointToInts(point tile.Point) (int, int) {
 	return int(point.X), int(point.Y)
@@ -86,8 +87,6 @@ func setupPlayerView(grid *tile.Grid) PlayerView {
 type PlayerView struct {
 	view *tile.View
 	size tile.Point // represents grid size of view
-	input *input.Input
-
 }
 
 func newPlayerView(grid *tile.Grid) PlayerView {
@@ -102,10 +101,11 @@ func newPlayerView(grid *tile.Grid) PlayerView {
 			func(p tile.Point, tile tile.Tile) {},
 		),
 		size: sizePos, // Maybe this should be a function instead of private field?
-		input: input.NewInput(),
 	}
+
 	return playerView
 }
+
 // (x1,y1), (x2,y2) --> rect(x1,y1,x2,y2)
 // Wraps tile.New:w
 func rectFromTwoPositions(lowPosition, highPosition tile.Point) tile.Rect {
