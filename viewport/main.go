@@ -18,65 +18,55 @@ var (
 
 	standardTile = tile.Tile{9, 9, 9, 3, 3, 3}
 	equalPosTile = tile.Tile{21, 21, 21, 9, 9, 9}
+
+	defaultStyle = tcell.StyleDefault.Background(tcell.ColorBlue).Foreground(tcell.ColorRed)
 )
 
 const (
 	defaultPlayerViewSize = 5
+
 )
 
 func main() {
+	// the Grid should be read from a grpc request for the map, player pos polled or something cool
 	grid := new21Grid()
-
 	log.Print("Created Grid of size ", aurora.Green(grid.Size))
 
 	playerView := setupPlayerView(grid)
 
-	screen, err := tcell.NewScreen()
-	if err != nil {
-		panic(err)
-	}
-	if err := screen.Init(); err != nil {
-		panic(err)
-	}
-
-	defStyle := tcell.StyleDefault.
-		Background(tcell.ColorBlue).
-		Foreground(tcell.ColorRed)
-
-	screen.SetStyle(defStyle)
-
-	// Game Loop
 	for {
-		screen.Show()
+		playerView.consumeTerminalEvents()
 
-		event := screen.PollEvent()
-
-		switch event := event.(type) {
-		case *tcell.EventResize:
-			screen.Sync()
-		case *tcell.EventKey:
-			if event.Key() == tcell.KeyEscape || event.Key() == tcell.KeyCtrlC {
-				screen.Fini()
-				os.Exit(0)
-			}
-		}
-		
 		time.Sleep(time.Second * 1)
-		//playerView.view.Each(printTile)
-		playerView.view.Each(func(point tile.Point, t tile.Tile) {
-			screen.SetContent(
-				int(point.X),
-				int(point.Y),
-				'c',
-				nil,
-				defStyle,
-			)
-		})
+		playerView.printViewToTerminal()
 	}
 }
 
-func pointToInts(point tile.Point) (int, int) {
-	return int(point.X), int(point.Y)
+func (playerView PlayerView)consumeTerminalEvents() {
+	event := playerView.screen.PollEvent()
+
+	switch event := event.(type) {
+	case *tcell.EventResize:
+		playerView.screen.Sync()
+	case *tcell.EventKey:
+		if event.Key() == tcell.KeyEscape || event.Key() == tcell.KeyCtrlC {
+			playerView.screen.Fini()
+			os.Exit(0)
+		}
+	}
+}
+
+func (playerView PlayerView)printViewToTerminal() {
+	playerView.view.Each(func(point tile.Point, t tile.Tile) {
+		playerView.screen.SetContent(
+			int(point.X),
+			int(point.Y),
+			'c',
+			nil,
+			defaultStyle,
+		)
+	})
+	playerView.screen.Show()
 }
 
 func setupPlayerView(grid *tile.Grid) PlayerView {
@@ -87,23 +77,51 @@ func setupPlayerView(grid *tile.Grid) PlayerView {
 type PlayerView struct {
 	view *tile.View
 	size tile.Point // represents grid size of view
+	screen tcell.Screen
 }
 
 func newPlayerView(grid *tile.Grid) PlayerView {
-	sizePos := tile.Point{defaultPlayerViewSize, defaultPlayerViewSize}
+	sizePos := getDefaultPlayerViewSizeAsPoint()
+	tileView := newPlayerViewFromGrid(grid, sizePos)
+	terminalScreen := newTerminalScreen()
 
 	playerView := PlayerView{
-		view: grid.View(
-			rectFromTwoPositions(
-				tile.Point{0, 0},
-				sizePos,
-			),
-			func(p tile.Point, tile tile.Tile) {},
-		),
 		size: sizePos, // Maybe this should be a function instead of private field?
+		view: tileView,
+		screen: terminalScreen,
 	}
 
 	return playerView
+}
+
+func newTerminalScreen() tcell.Screen {
+	screen, err := tcell.NewScreen()
+	if err != nil {
+		panic(err)
+	}
+	if err := screen.Init(); err != nil {
+		panic(err)
+	}
+
+	screen.SetStyle(defaultStyle)
+	return screen
+}
+
+
+func getDefaultPlayerViewSizeAsPoint() tile.Point {
+	return tile.Point{defaultPlayerViewSize, defaultPlayerViewSize}
+}
+
+func newPlayerViewFromGrid(grid *tile.Grid, sizePos tile.Point) *tile.View {
+	tileView := grid.View(
+		rectFromTwoPositions(
+			tile.Point{0, 0},
+			sizePos,
+		),
+		func(p tile.Point, tile tile.Tile) {},
+	)
+
+	return tileView
 }
 
 // (x1,y1), (x2,y2) --> rect(x1,y1,x2,y2)
@@ -146,6 +164,7 @@ func getColorFromTileAvg(currentTile tile.Tile) (uint8, uint8) {
 }
 
 // Sets 00, X,Y and X/2,Y/2 as standard tiles
+// For developmental purposes, TODO delete/move this
 func setReferenceTiles(grid *tile.Grid) {
 	grid.Each(func(point tile.Point, _ tile.Tile) {
 		grid.WriteAt(point.X, point.Y, standardTile)
