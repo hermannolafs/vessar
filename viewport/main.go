@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"github.com/gdamore/tcell"
+	"github.com/gdamore/tcell/v2"
 	"github.com/kelindar/tile"
 	"github.com/logrusorgru/aurora/v3"
 	"hermannolafs/vessar/viewport/color"
@@ -13,19 +13,19 @@ import (
 )
 
 var (
-	zeroZeroTile = tile.Tile{255, 255, 255, 0, 0, 0}
-	middletile   = tile.Tile{64, 64, 64, 128, 128, 1}
-	maxMaxTile   = tile.Tile{0, 0, 0, 255, 255, 2}
-
-	standardTile = tile.Tile{9, 9, 9, 3, 3, 3}
-	equalPosTile = tile.Tile{21, 21, 21, 9, 9, 4}
-
-	defaultStyle = tcell.StyleDefault.Background(tcell.ColorBlue).Foreground(tcell.ColorRed)
+	zeroZeroTile = tile.Tile{0, 0, 0, 0, 0, 0x51}
+	middletile   = tile.Tile{0, 0, 0, 0, 0, 0x23}
+	maxMaxTile   = tile.Tile{0, 0, 0, 0, 0, 0x51}
+	standardTile = tile.Tile{0, 0, 0, 0, 0, 0x02}
+	equalPosTile = tile.Tile{0, 0, 0, 0, 0, 0x31}
 )
 
 const (
-	defaultPlayerViewSize = 5
+	// index prefix represents index of data stored in in tile byte array
+	indexColour = 5
 
+
+	defaultPlayerViewSize = 9
 )
 
 func main() {
@@ -42,7 +42,7 @@ func main() {
 	}
 }
 
-func (playerView PlayerView)consumeTerminalEvents() {
+func (playerView PlayerView) consumeTerminalEvents() {
 	event := playerView.screen.PollEvent()
 
 	switch event := event.(type) {
@@ -56,7 +56,7 @@ func (playerView PlayerView)consumeTerminalEvents() {
 	}
 }
 
-func (playerView PlayerView)printViewToTerminal() {
+func (playerView PlayerView) printViewToTerminal() {
 	playerView.view.Each(func(point tile.Point, t tile.Tile) {
 		playerView.screen.SetContent(
 			int(point.X),
@@ -69,10 +69,11 @@ func (playerView PlayerView)printViewToTerminal() {
 	playerView.screen.Show()
 }
 
-func mapGridTileToTcellStyle(t tile.Tile) tcell.Style {
+func mapGridTileToTcellStyle(tile tile.Tile) tcell.Style {
+	background, foreground := color.GetTerminalColoursFromTileColours(tile[indexColour])
 	return tcell.StyleDefault.
-		Background(tcell.ColorWhite). // TODO this should be some 0xF0 mask
-		Foreground(color.ColorValues[t[5]]) // TODO this hsould be some 0x0F mask
+		Background(background).
+		Foreground(foreground)
 }
 
 func setupPlayerView(grid *tile.Grid) PlayerView {
@@ -81,8 +82,8 @@ func setupPlayerView(grid *tile.Grid) PlayerView {
 }
 
 type PlayerView struct {
-	view *tile.View
-	size tile.Point // represents grid size of view
+	view   *tile.View
+	size   tile.Point // represents grid size of view
 	screen tcell.Screen
 }
 
@@ -92,8 +93,8 @@ func newPlayerView(grid *tile.Grid) PlayerView {
 	terminalScreen := newTcellScreen()
 
 	playerView := PlayerView{
-		size: sizePos, // Maybe this should be a function instead of private field?
-		view: tileView,
+		size:   sizePos, // Maybe this should be a function instead of private field?
+		view:   tileView,
 		screen: terminalScreen,
 	}
 
@@ -109,10 +110,9 @@ func newTcellScreen() tcell.Screen {
 		panic(err)
 	}
 
-	screen.SetStyle(defaultStyle)
+	screen.SetStyle(tcell.StyleDefault)
 	return screen
 }
-
 
 func getDefaultPlayerViewSizeAsPoint() tile.Point {
 	return tile.Point{defaultPlayerViewSize, defaultPlayerViewSize}
