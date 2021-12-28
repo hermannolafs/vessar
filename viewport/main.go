@@ -5,6 +5,7 @@ import (
 	"github.com/gdamore/tcell"
 	"github.com/kelindar/tile"
 	"github.com/logrusorgru/aurora/v3"
+	"hermannolafs/vessar/viewport/color"
 	"log"
 	"os"
 	"strconv"
@@ -13,11 +14,11 @@ import (
 
 var (
 	zeroZeroTile = tile.Tile{255, 255, 255, 0, 0, 0}
-	maxMaxTile   = tile.Tile{0, 0, 0, 255, 255, 255}
-	middletile   = tile.Tile{64, 64, 64, 128, 128, 128}
+	middletile   = tile.Tile{64, 64, 64, 128, 128, 1}
+	maxMaxTile   = tile.Tile{0, 0, 0, 255, 255, 2}
 
 	standardTile = tile.Tile{9, 9, 9, 3, 3, 3}
-	equalPosTile = tile.Tile{21, 21, 21, 9, 9, 9}
+	equalPosTile = tile.Tile{21, 21, 21, 9, 9, 4}
 
 	defaultStyle = tcell.StyleDefault.Background(tcell.ColorBlue).Foreground(tcell.ColorRed)
 )
@@ -36,9 +37,8 @@ func main() {
 
 	for {
 		playerView.consumeTerminalEvents()
-
-		time.Sleep(time.Second * 1)
 		playerView.printViewToTerminal()
+		time.Sleep(time.Second * 1)
 	}
 }
 
@@ -63,10 +63,16 @@ func (playerView PlayerView)printViewToTerminal() {
 			int(point.Y),
 			'c',
 			nil,
-			defaultStyle,
+			mapGridTileToTcellStyle(t),
 		)
 	})
 	playerView.screen.Show()
+}
+
+func mapGridTileToTcellStyle(t tile.Tile) tcell.Style {
+	return tcell.StyleDefault.
+		Background(tcell.ColorWhite). // TODO this should be some 0xF0 mask
+		Foreground(color.ColorValues[t[5]]) // TODO this hsould be some 0x0F mask
 }
 
 func setupPlayerView(grid *tile.Grid) PlayerView {
@@ -83,7 +89,7 @@ type PlayerView struct {
 func newPlayerView(grid *tile.Grid) PlayerView {
 	sizePos := getDefaultPlayerViewSizeAsPoint()
 	tileView := newPlayerViewFromGrid(grid, sizePos)
-	terminalScreen := newTerminalScreen()
+	terminalScreen := newTcellScreen()
 
 	playerView := PlayerView{
 		size: sizePos, // Maybe this should be a function instead of private field?
@@ -94,7 +100,7 @@ func newPlayerView(grid *tile.Grid) PlayerView {
 	return playerView
 }
 
-func newTerminalScreen() tcell.Screen {
+func newTcellScreen() tcell.Screen {
 	screen, err := tcell.NewScreen()
 	if err != nil {
 		panic(err)
