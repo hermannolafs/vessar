@@ -1,36 +1,35 @@
 package main
 
 import (
-	"fmt"
 	"github.com/gdamore/tcell/v2"
 	"github.com/kelindar/tile"
 	"github.com/logrusorgru/aurora/v3"
-	"hermannolafs/vessar/viewport/color"
+	"hermannolafs/vessar/viewport/mappings"
 	"log"
 	"os"
-	"strconv"
-	"time"
 )
 
 var (
-	zeroZeroTile = tile.Tile{0, 0, 0, 0, 0, 0x51}
-	middletile   = tile.Tile{0, 0, 0, 0, 0, 0x23}
-	maxMaxTile   = tile.Tile{0, 0, 0, 0, 0, 0x51}
-	standardTile = tile.Tile{0, 0, 0, 0, 0, 0x02}
-	equalPosTile = tile.Tile{0, 0, 0, 0, 0, 0x31}
+	zeroZeroTile = tile.Tile{0x00, 0x00, 0x00, 0x00, 0x02, 0x51}
+	middletile   = tile.Tile{0x00, 0x00, 0x00, 0x00, 0x02, 0x23}
+	maxMaxTile   = tile.Tile{0x00, 0x00, 0x00, 0x00, 0x01, 0x51}
+	standardTile = tile.Tile{0x00, 0x00, 0x00, 0x00, 0x00, 0x02}
+
+	equalPosTile = tile.Tile{0x00, 0x00, 0x00, 0x00, 0x01, 0x31}
+	player       = tile.Tile{0x00, 0x00, 0x00, 0x00, 0x04, 0x54}
 )
 
 const (
 	// index prefix represents index of data stored in in tile byte array
-	indexColour = 5
+	indexMapProperties = 4 // 0000 0011 ; 0000 : 00 : 11 ; 0 none 1 collision 2 npc 3 playerc
+	indexColor         = 5 // 1111 1111 ; bg 1111 : fg 1111
 
-
-	defaultPlayerViewSize = 9
+	defaultPlayerViewSize = 6
 )
 
 func main() {
 	// the Grid should be read from a grpc request for the map, player pos polled or something cool
-	grid := new21Grid()
+	grid := newGrid(30, 30)
 	log.Print("Created Grid of size ", aurora.Green(grid.Size))
 
 	playerView := setupPlayerView(grid)
@@ -38,7 +37,6 @@ func main() {
 	for {
 		playerView.consumeTerminalEvents()
 		playerView.printViewToTerminal()
-		time.Sleep(time.Second * 1)
 	}
 }
 
@@ -49,11 +47,18 @@ func (playerView PlayerView) consumeTerminalEvents() {
 	case *tcell.EventResize:
 		playerView.screen.Sync()
 	case *tcell.EventKey:
-		if event.Key() == tcell.KeyEscape || event.Key() == tcell.KeyCtrlC {
-			playerView.screen.Fini()
-			os.Exit(0)
+		switch event.Key() {
+		case tcell.KeyCtrlC:
+			playerView.exit(0)
+		case tcell.KeyUp:
+
 		}
 	}
+}
+
+func (playerView PlayerView) exit(code int) {
+	playerView.screen.Fini()
+	os.Exit(code)
 }
 
 func (playerView PlayerView) printViewToTerminal() {
@@ -61,7 +66,7 @@ func (playerView PlayerView) printViewToTerminal() {
 		playerView.screen.SetContent(
 			int(point.X),
 			int(point.Y),
-			'c',
+			getCharacterForTile(t[indexMapProperties]),
 			nil,
 			mapGridTileToTcellStyle(t),
 		)
@@ -69,8 +74,25 @@ func (playerView PlayerView) printViewToTerminal() {
 	playerView.screen.Show()
 }
 
+func getCharacterForTile(mapProperties byte) rune {
+	// This will break if we use any of the upper bits
+	// TODO learn how to do bitwise switch cases
+	switch mapProperties {
+	case mappings.GridNone:
+		return mappings.TerminalRunes[mappings.None]
+	case mappings.GridCollision:
+		return mappings.TerminalRunes[mappings.Collision]
+	case mappings.GridNonPlayer:
+		return mappings.TerminalRunes[mappings.NonPlayer]
+	case mappings.GridPlayer:
+		return mappings.TerminalRunes[mappings.Player]
+	default:
+		return mappings.TerminalRunes[mappings.None]
+	}
+}
+
 func mapGridTileToTcellStyle(tile tile.Tile) tcell.Style {
-	background, foreground := color.GetTerminalColoursFromTileColours(tile[indexColour])
+	background, foreground := mappings.GetTerminalColoursFromTileColours(tile[indexColor])
 	return tcell.StyleDefault.
 		Background(background).
 		Foreground(foreground)
@@ -89,6 +111,10 @@ type PlayerView struct {
 
 func newPlayerView(grid *tile.Grid) PlayerView {
 	sizePos := getDefaultPlayerViewSizeAsPoint()
+
+	// WIP Setup player character
+	grid.WriteAt(sizePos.X/2, sizePos.Y/2, player)
+
 	tileView := newPlayerViewFromGrid(grid, sizePos)
 	terminalScreen := newTcellScreen()
 
@@ -139,36 +165,6 @@ func rectFromTwoPositions(lowPosition, highPosition tile.Point) tile.Rect {
 	)
 }
 
-func printGrid(grid *tile.Grid) {
-	for y := int16(0); y < grid.Size.Y; y++ {
-		for x := int16(0); x < grid.Size.X; x++ {
-			currentTile, _ := grid.At(x, y)
-			fg, bg := getColorFromTileAvg(currentTile)
-			fmt.Print(aurora.Index(fg, aurora.BgIndex(bg, posToString(x, y))))
-		}
-		println()
-	}
-}
-
-// x=1, y=1 --> "1,1 "
-func posToString(x int16, y int16) string {
-	return strconv.Itoa(int(x)) + "," +
-		strconv.Itoa(int(y)) + " "
-}
-
-// Calculates bg color from vales in [0:2] and fg from [3:5]
-// Used temporarily as placeholder for proper ASCII/Sprites
-func getColorFromTileAvg(currentTile tile.Tile) (uint8, uint8) {
-	fgAverage := (currentTile[0] + currentTile[1] + currentTile[2]) / 3
-	bgAverage := (currentTile[3] + currentTile[4] + currentTile[5]) / 3
-
-	if fgAverage == bgAverage && fgAverage == 0 {
-		return 0, 23
-	}
-
-	return fgAverage, bgAverage
-}
-
 // Sets 00, X,Y and X/2,Y/2 as standard tiles
 // For developmental purposes, TODO delete/move this
 func setReferenceTiles(grid *tile.Grid) {
@@ -186,17 +182,9 @@ func setReferenceTiles(grid *tile.Grid) {
 	grid.WriteAt(grid.Size.X-1, grid.Size.Y-1, maxMaxTile)
 	// Mark middle
 	grid.WriteAt(grid.Size.X/2, grid.Size.Y/2, middletile)
-
-	//zeroTile, _ := grid.At(0,0)
-	//log.Print("Set reference tiles, 0,0 is now: ", aurora.Sprintf(aurora.Blue("%v"), zeroTile))
 }
 
-// Returns 9x9 grid
-func new9Grid() *tile.Grid {
-	return tile.NewGrid(9, 9)
-}
-
-// Returns 21x21 grid
-func new21Grid() *tile.Grid {
-	return tile.NewGrid(21, 21)
+// Returns x,y grid
+func newGrid(x, y int16) *tile.Grid {
+	return tile.NewGrid(x, y)
 }
