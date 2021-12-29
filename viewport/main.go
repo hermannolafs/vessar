@@ -16,7 +16,7 @@ var (
 	standardTile = tile.Tile{0x00, 0x00, 0x00, 0x00, 0x00, 0x02}
 
 	equalPosTile = tile.Tile{0x00, 0x00, 0x00, 0x00, 0x01, 0x31}
-	player       = tile.Tile{0x00, 0x00, 0x00, 0x00, 0x04, 0x54}
+	playerTile   = tile.Tile{0x00, 0x00, 0x00, 0x00, 0x03, 0x14}
 )
 
 const (
@@ -24,15 +24,16 @@ const (
 	indexMapProperties = 4 // 0000 0011 ; 0000 : 00 : 11 ; 0 none 1 collision 2 npc 3 playerc
 	indexColor         = 5 // 1111 1111 ; bg 1111 : fg 1111
 
-	defaultPlayerViewSize = 6
+	playerViewSize = 6 // TODO this should be configurable or hard coded
 )
+
+// used for kelidar/tile functions where we do not need to pass a function
+func none(_ tile.Point, _ tile.Tile) {}
 
 func main() {
 	// the Grid should be read from a grpc request for the map, player pos polled or something cool
-	grid := newGrid(30, 30)
-	log.Print("Created Grid of size ", aurora.Green(grid.Size))
 
-	playerView := setupPlayerView(grid)
+	playerView := newPlayerView()
 
 	for {
 		playerView.consumeTerminalEvents()
@@ -40,54 +41,66 @@ func main() {
 	}
 }
 
-func (playerView PlayerView) consumeTerminalEvents() {
-	event := playerView.screen.PollEvent()
+func (player *Player) consumeTerminalEvents() {
+	event := player.screen.PollEvent()
 
 	switch event := event.(type) {
 	case *tcell.EventResize:
-		playerView.screen.Sync()
+		player.screen.Sync()
 	case *tcell.EventKey:
 		switch event.Key() {
 		case tcell.KeyCtrlC:
-			playerView.exit(0)
+			player.exit(0)
 		case tcell.KeyUp:
-
+			player.MoveNorth()
 		}
 	}
 }
 
-func (playerView PlayerView) exit(code int) {
-	playerView.screen.Fini()
+func (player Player) exit(code int) {
+	player.screen.Fini()
 	os.Exit(code)
 }
 
-func (playerView PlayerView) printViewToTerminal() {
-	playerView.view.Each(func(point tile.Point, t tile.Tile) {
-		playerView.screen.SetContent(
+func (player Player) printViewToTerminal() {
+	player.iterateOverPlayerView(func(point tile.Point, t tile.Tile) {
+		character := getCharacterForTile(t[indexMapProperties])
+		player.screen.SetContent(
 			int(point.X),
 			int(point.Y),
-			getCharacterForTile(t[indexMapProperties]),
-			nil,
+			character[0],
+			character[1:],
 			mapGridTileToTcellStyle(t),
 		)
 	})
-	playerView.screen.Show()
+	player.screen.Show()
 }
 
-func getCharacterForTile(mapProperties byte) rune {
+func (player *Player) MoveNorth() {
+	player.grid.Within(player.position, player.position, func(point tile.Point, t tile.Tile) {
+		oldPosition := player.position
+		newPosition := point.Move(tile.North)
+		player.grid.WriteAt(newPosition.X, newPosition.Y, playerTile)
+		player.grid.WriteAt(oldPosition.X, oldPosition.Y, standardTile)
+		player.setNewPlayerPosition(newPosition)
+
+	})
+}
+
+func getCharacterForTile(mapProperties byte) []rune {
 	// This will break if we use any of the upper bits
 	// TODO learn how to do bitwise switch cases
 	switch mapProperties {
 	case mappings.GridNone:
-		return mappings.TerminalRunes[mappings.None]
+		return []rune{mappings.TerminalRunes[mappings.None]}
 	case mappings.GridCollision:
-		return mappings.TerminalRunes[mappings.Collision]
+		return []rune{mappings.TerminalRunes[mappings.Collision]}
 	case mappings.GridNonPlayer:
-		return mappings.TerminalRunes[mappings.NonPlayer]
+		return []rune{mappings.TerminalRunes[mappings.NonPlayer]}
 	case mappings.GridPlayer:
-		return mappings.TerminalRunes[mappings.Player]
+		return []rune{mappings.TerminalRunes[mappings.Player]}
 	default:
-		return mappings.TerminalRunes[mappings.None]
+		return []rune{mappings.TerminalRunes[mappings.None]}
 	}
 }
 
@@ -98,30 +111,26 @@ func mapGridTileToTcellStyle(tile tile.Tile) tcell.Style {
 		Foreground(foreground)
 }
 
-func setupPlayerView(grid *tile.Grid) PlayerView {
+type Player struct {
+	grid     *tile.Grid
+	position tile.Point // represents grid size of view
+	screen   tcell.Screen
+}
+
+func newPlayerView() *Player {
+	grid := newGrid(30, 30)
 	setReferenceTiles(grid)
-	return newPlayerView(grid)
-}
-
-type PlayerView struct {
-	view   *tile.View
-	size   tile.Point // represents grid size of view
-	screen tcell.Screen
-}
-
-func newPlayerView(grid *tile.Grid) PlayerView {
-	sizePos := getDefaultPlayerViewSizeAsPoint()
-
 	// WIP Setup player character
-	grid.WriteAt(sizePos.X/2, sizePos.Y/2, player)
 
-	tileView := newPlayerViewFromGrid(grid, sizePos)
+	playerPosition := getDefaultPlayerPositionSizeAsPoint()
+	grid.WriteAt(playerViewSize/2, playerViewSize/2, playerTile)
+
 	terminalScreen := newTcellScreen()
 
-	playerView := PlayerView{
-		size:   sizePos, // Maybe this should be a function instead of private field?
-		view:   tileView,
-		screen: terminalScreen,
+	playerView := &Player{
+		grid:     grid,
+		position: playerPosition, // Maybe this should be a function instead of private field?
+		screen:   terminalScreen,
 	}
 
 	return playerView
@@ -140,28 +149,38 @@ func newTcellScreen() tcell.Screen {
 	return screen
 }
 
-func getDefaultPlayerViewSizeAsPoint() tile.Point {
-	return tile.Point{defaultPlayerViewSize, defaultPlayerViewSize}
+func getDefaultPlayerPositionSizeAsPoint() tile.Point {
+	return tile.Point{playerViewSize / 2, playerViewSize / 2}
 }
 
-func newPlayerViewFromGrid(grid *tile.Grid, sizePos tile.Point) *tile.View {
-	tileView := grid.View(
-		rectFromTwoPositions(
-			tile.Point{0, 0},
-			sizePos,
-		),
-		func(p tile.Point, tile tile.Tile) {},
+// Dumb functiuon??
+func (player Player) iterateOverPlayerView(functionToRun func(point tile.Point, tile tile.Tile)) {
+	player.grid.Within(
+		tile.Point{
+			player.position.X - playerViewSize/2,
+			player.position.Y - playerViewSize/2,
+		},
+		tile.Point{
+			player.position.X + playerViewSize/2,
+			player.position.Y + playerViewSize/2,
+		},
+		functionToRun,
 	)
-
-	return tileView
 }
 
-// (x1,y1), (x2,y2) --> rect(x1,y1,x2,y2)
-// Wraps tile.New:w
-func rectFromTwoPositions(lowPosition, highPosition tile.Point) tile.Rect {
+func (player *Player) setNewPlayerPosition(position tile.Point) {
+	player.position = position
+}
+
+// Calculates the
+func calculatePlayerViewRectangleFromPosition(playerPosition tile.Point) tile.Rect {
 	return tile.NewRect(
-		lowPosition.X, lowPosition.Y,
-		highPosition.X, highPosition.Y,
+		// Topleft
+		playerPosition.X-playerViewSize/2,
+		playerPosition.Y-playerViewSize/2,
+		// BottomRight
+		playerPosition.X+playerViewSize/2,
+		playerPosition.Y+playerViewSize/2,
 	)
 }
 
@@ -186,5 +205,8 @@ func setReferenceTiles(grid *tile.Grid) {
 
 // Returns x,y grid
 func newGrid(x, y int16) *tile.Grid {
-	return tile.NewGrid(x, y)
+
+	grid := tile.NewGrid(x, y)
+	log.Print("Created Grid of size ", aurora.Green(grid.Size))
+	return grid
 }
