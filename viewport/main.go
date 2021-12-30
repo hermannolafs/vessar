@@ -24,7 +24,8 @@ const (
 	indexMapProperties = 4 // 0000 0011 ; 0000 : 00 : 11 ; 0 none 1 collision 2 npc 3 playerc
 	indexColor         = 5 // 1111 1111 ; bg 1111 : fg 1111
 
-	playerViewSize = 6 // TODO this should be configurable or hard coded
+	viewSize = 6  // TODO this should be configurable or hard coded
+	gridSize = 30 // gridSize X gridSize Always assuming grids are complete rectangle
 )
 
 // used for kelidar/tile functions where we do not need to pass a function
@@ -36,8 +37,8 @@ func main() {
 	playerView := newPlayerView()
 
 	for {
-		playerView.consumeTerminalEvents()
 		playerView.printViewToTerminal()
+		playerView.consumeTerminalEvents()
 	}
 }
 
@@ -49,12 +50,20 @@ func (player *Player) consumeTerminalEvents() {
 		player.screen.Sync()
 	case *tcell.EventKey:
 		switch event.Key() {
+
 		case tcell.KeyCtrlC:
 			player.exit(0)
 		case tcell.KeyUp:
+			player.MoveSouth()
+		case tcell.KeyDown:
 			player.MoveNorth()
+		case tcell.KeyLeft:
+			player.MoveWest()
+		case tcell.KeyRight:
+			player.MoveEast()
 		}
 	}
+	player.screen.Clear()
 }
 
 func (player Player) exit(code int) {
@@ -63,28 +72,51 @@ func (player Player) exit(code int) {
 }
 
 func (player Player) printViewToTerminal() {
-	player.iterateOverPlayerView(func(point tile.Point, t tile.Tile) {
-		character := getCharacterForTile(t[indexMapProperties])
-		player.screen.SetContent(
-			int(point.X),
-			int(point.Y),
-			character[0],
-			character[1:],
-			mapGridTileToTcellStyle(t),
-		)
-	})
+	player.iterateOverPlayerView(player.setPointToTile)
 	player.screen.Show()
 }
 
-func (player *Player) MoveNorth() {
+func (player Player) setPointToTile(point tile.Point, t tile.Tile) {
+	character := getCharacterForTile(t[indexMapProperties])
+	player.screen.SetContent(
+		int(point.X), int(point.Y),
+		character[0], character[1:],
+		mapGridTileToTcellStyle(t),
+	)
+}
+
+func (player *Player) MoveNorth() { player.MoveInDirection(tile.North) }
+func (player *Player) MoveSouth() { player.MoveInDirection(tile.South) }
+func (player *Player) MoveEast()  { player.MoveInDirection(tile.East) }
+func (player *Player) MoveWest()  { player.MoveInDirection(tile.West) }
+
+func (player *Player) MoveInDirection(direction tile.Direction) {
 	player.grid.Within(player.position, player.position, func(point tile.Point, t tile.Tile) {
+		// WIP replacement should work differently
 		oldPosition := player.position
-		newPosition := point.Move(tile.North)
+		newPosition := point.Move(direction)
+		if isPointOutOfBounds(newPosition) {
+			return
+		}
+
 		player.grid.WriteAt(newPosition.X, newPosition.Y, playerTile)
 		player.grid.WriteAt(oldPosition.X, oldPosition.Y, standardTile)
 		player.setNewPlayerPosition(newPosition)
-
 	})
+}
+
+func isPointOutOfBounds(position tile.Point) bool {
+	switch {
+	case position.X < 0:
+		return true
+	case gridSize <= position.X:
+		return true
+	case position.Y < 0:
+		return true
+	case gridSize <= position.Y:
+		return true
+	}
+	return false
 }
 
 func getCharacterForTile(mapProperties byte) []rune {
@@ -118,12 +150,13 @@ type Player struct {
 }
 
 func newPlayerView() *Player {
-	grid := newGrid(30, 30)
+	grid := newGrid(gridSize, gridSize)
 	setReferenceTiles(grid)
 	// WIP Setup player character
 
-	playerPosition := getDefaultPlayerPositionSizeAsPoint()
-	grid.WriteAt(playerViewSize/2, playerViewSize/2, playerTile)
+	//playerPosition := getDefaultPlayerPositionSizeAsPoint()
+	playerPosition := tile.Point{1, 1}
+	grid.WriteAt(1, 1, playerTile)
 
 	terminalScreen := newTcellScreen()
 
@@ -150,38 +183,46 @@ func newTcellScreen() tcell.Screen {
 }
 
 func getDefaultPlayerPositionSizeAsPoint() tile.Point {
-	return tile.Point{playerViewSize / 2, playerViewSize / 2}
+	return tile.Point{viewSize / 2, viewSize / 2}
 }
 
 // Dumb functiuon??
+// TODO make this function shorter this is a mess
 func (player Player) iterateOverPlayerView(functionToRun func(point tile.Point, tile tile.Tile)) {
+	// Going below zero can cause weird overflow
+	topLeft := tile.Point{
+		player.position.X - viewSize/2,
+		player.position.Y - viewSize/2,
+	}
+	if player.position.X < viewSize/2 {
+		topLeft.X = 0
+	}
+	if player.position.Y < viewSize/2 {
+		topLeft.Y = 0
+	}
+
+	// No index issue here so far, just for safety
+	bottomRight := tile.Point{
+		player.position.X + viewSize/2,
+		player.position.Y + viewSize/2,
+	}
+	if gridSize < player.position.X+viewSize/2 {
+		bottomRight.X = gridSize
+	}
+	if gridSize < player.position.Y+viewSize/2 {
+		bottomRight.Y = gridSize
+	}
+
 	player.grid.Within(
-		tile.Point{
-			player.position.X - playerViewSize/2,
-			player.position.Y - playerViewSize/2,
-		},
-		tile.Point{
-			player.position.X + playerViewSize/2,
-			player.position.Y + playerViewSize/2,
-		},
+		topLeft,
+		bottomRight,
 		functionToRun,
 	)
 }
 
 func (player *Player) setNewPlayerPosition(position tile.Point) {
+	// TODO maybe to some move verification here?
 	player.position = position
-}
-
-// Calculates the
-func calculatePlayerViewRectangleFromPosition(playerPosition tile.Point) tile.Rect {
-	return tile.NewRect(
-		// Topleft
-		playerPosition.X-playerViewSize/2,
-		playerPosition.Y-playerViewSize/2,
-		// BottomRight
-		playerPosition.X+playerViewSize/2,
-		playerPosition.Y+playerViewSize/2,
-	)
 }
 
 // Sets 00, X,Y and X/2,Y/2 as standard tiles
