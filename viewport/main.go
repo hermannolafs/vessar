@@ -4,6 +4,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/kelindar/tile"
 	"github.com/logrusorgru/aurora/v3"
+	"github.com/rivo/tview"
 
 	"hermannolafs/vessar/viewport/mappings"
 
@@ -33,14 +34,60 @@ const (
 // used for kelidar/tile functions where we do not need to pass a function
 func none(_ tile.Point, _ tile.Tile) {}
 
+//func main() {
+//	// the Grid should be read from a grpc request for the map, player pos polled or something cool
+//	playerView := newPlayerView()
+//
+//	for {
+//		playerView.printViewToTerminal()
+//		playerView.consumeTerminalEvents()
+//	}
+//}
+
 func main() {
-	// the Grid should be read from a grpc request for the map, player pos polled or something cool
+	box := tview.NewBox().SetBorder(true).SetTitle("Hello, world!")
+	box.SetRect(0, 0, viewSize+2, viewSize+2)
+	println(box.GetInnerRect()) // 1 1 16 7
+
 	playerView := newPlayerView()
 
-	for {
-		playerView.printViewToTerminal()
-		playerView.consumeTerminalEvents()
+	box.SetDrawFunc(func(screen tcell.Screen, x, y, width, height int) (int, int, int, int) {
+
+		topLeft, bottomRight := playerView.extractPlayerViewCorners()
+
+		offset := tile.Point{}
+		offsetFound := false
+
+		playerView.grid.Within(
+			topLeft,
+			bottomRight,
+			func(point tile.Point, tileAtPoint tile.Tile) {
+				if offsetFound == false {
+					offset = point
+					offsetFound = true
+				}
+
+				// Get character and its properties for tile
+				character := getCharacterForTile(tileAtPoint[indexMapProperties])
+
+				// Set terminal at point x,y with character
+				screen.SetContent(
+					int(point.X - offset.X + 1), int(point.Y - offset.Y + 1),
+					character[0], character[1:],
+					mapGridTileToTcellStyle(tileAtPoint),
+				)
+			},
+		)
+
+		return 0,0,viewSize,viewSize
+	})
+
+	app := tview.NewApplication().SetRoot(box, false)
+
+	if err := app.Run(); err != nil {
+		panic(err)
 	}
+
 }
 
 func (player *Player) consumeTerminalEvents() {
