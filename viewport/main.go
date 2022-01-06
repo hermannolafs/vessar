@@ -4,7 +4,9 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/kelindar/tile"
 	"github.com/logrusorgru/aurora/v3"
+
 	"hermannolafs/vessar/viewport/mappings"
+
 	"log"
 	"os"
 )
@@ -24,7 +26,7 @@ const (
 	indexMapProperties = 4 // 0000 0011 ; 0000 : 00 : 11 ; 0 none 1 collision 2 npc 3 playerc
 	indexColor         = 5 // 1111 1111 ; bg 1111 : fg 1111
 
-	viewSize = 6  // TODO this should be configurable or hard coded
+	viewSize = 9  // TODO this should be configurable or hard coded
 	gridSize = 30 // gridSize X gridSize Always assuming grids are complete rectangle
 )
 
@@ -33,7 +35,6 @@ func none(_ tile.Point, _ tile.Tile) {}
 
 func main() {
 	// the Grid should be read from a grpc request for the map, player pos polled or something cool
-
 	playerView := newPlayerView()
 
 	for {
@@ -72,14 +73,18 @@ func (player Player) exit(code int) {
 }
 
 func (player Player) printViewToTerminal() {
-	player.iterateOverPlayerView(player.setPointToTile)
+	player.updatePlayerView()
 	player.screen.Show()
 }
 
 func (player Player) setPointToTile(point tile.Point, t tile.Tile) {
+	// Get character and its properties for tile
 	character := getCharacterForTile(t[indexMapProperties])
+	// Set terminal point to character with
+
 	player.screen.SetContent(
-		int(point.X), int(point.Y),
+		int(point.X),
+		int(point.Y),
 		character[0], character[1:],
 		mapGridTileToTcellStyle(t),
 	)
@@ -92,7 +97,8 @@ func (player *Player) MoveWest()  { player.MoveInDirection(tile.West) }
 
 func (player *Player) MoveInDirection(direction tile.Direction) {
 	player.grid.Within(player.position, player.position, func(point tile.Point, t tile.Tile) {
-		// WIP replacement should work differently
+		// WIP replacement should work differently, this way everywhere the player has been
+		// gets overwritten by standard tile.
 		oldPosition := player.position
 		newPosition := point.Move(direction)
 		if isPointOutOfBounds(newPosition) {
@@ -149,14 +155,19 @@ type Player struct {
 	screen   tcell.Screen
 }
 
+func getDefaultPlayerPositionSizeAsPoint() tile.Point {
+	return tile.Point{X: viewSize / 2, Y: viewSize / 2}
+}
+
 func newPlayerView() *Player {
 	grid := newGrid(gridSize, gridSize)
 	setReferenceTiles(grid)
 	// WIP Setup player character
 
-	//playerPosition := getDefaultPlayerPositionSizeAsPoint()
-	playerPosition := tile.Point{1, 1}
-	grid.WriteAt(1, 1, playerTile)
+	playerPosition := getDefaultPlayerPositionSizeAsPoint()
+	grid.WriteAt(playerPosition.X, playerPosition.Y, playerTile)
+	//playerPosition := tile.Point{1, 1}
+	//grid.WriteAt(1, 1, playerTile)
 
 	terminalScreen := newTcellScreen()
 
@@ -182,15 +193,61 @@ func newTcellScreen() tcell.Screen {
 	return screen
 }
 
-func getDefaultPlayerPositionSizeAsPoint() tile.Point {
-	return tile.Point{viewSize / 2, viewSize / 2}
+// This function is a bit doomed to be long due to the offset check
+func (player Player) updatePlayerView() {
+	topLeft, bottomRight := player.extractPlayerViewCorners()
+
+	// Represents the point values for the first
+	offset := tile.Point{}
+	offsetFound := false
+
+	player.grid.Within(
+		topLeft,
+		bottomRight,
+		func(point tile.Point, tileAtPoint tile.Tile) {
+			if offsetFound == false {
+				offset = point
+				offsetFound = true
+			}
+
+			player.setTerminalToTileAtPoint(
+				tileAtPoint,
+				tile.Point{
+					X: point.X - offset.X,
+					Y: point.Y - offset.Y,
+				},
+			)
+		},
+	)
 }
 
-// Dumb functiuon??
-// TODO make this function shorter this is a mess
+func (player Player) setTerminalToTileAtPoint(t tile.Tile, point tile.Point) {
+	// Get character and its properties for tile
+	character := getCharacterForTile(t[indexMapProperties])
+
+	// Set terminal at point x,y with character
+	player.screen.SetContent(
+		int(point.X), int(point.Y),
+		character[0], character[1:],
+		mapGridTileToTcellStyle(t),
+	)
+}
+
+// Iterates over grid representing the players view, of size gridSize X gridSize
 func (player Player) iterateOverPlayerView(functionToRun func(point tile.Point, tile tile.Tile)) {
-	// Going below zero can cause weird overflow
-	topLeft := tile.Point{
+	topLeft, bottomRight := player.extractPlayerViewCorners()
+	player.grid.Within(
+		topLeft,
+		bottomRight,
+		functionToRun,
+	)
+}
+
+// TODO make this function shorter this is a mess
+// returns topleft, bottomright
+func (player Player) extractPlayerViewCorners() (topLeft, bottomRight tile.Point) {
+	// Going below zero can cause weird overflow, something with tiles lib?
+	topLeft = tile.Point{
 		player.position.X - viewSize/2,
 		player.position.Y - viewSize/2,
 	}
@@ -202,7 +259,7 @@ func (player Player) iterateOverPlayerView(functionToRun func(point tile.Point, 
 	}
 
 	// No index issue here so far, just for safety
-	bottomRight := tile.Point{
+	bottomRight = tile.Point{
 		player.position.X + viewSize/2,
 		player.position.Y + viewSize/2,
 	}
@@ -212,12 +269,8 @@ func (player Player) iterateOverPlayerView(functionToRun func(point tile.Point, 
 	if gridSize < player.position.Y+viewSize/2 {
 		bottomRight.Y = gridSize
 	}
-
-	player.grid.Within(
-		topLeft,
-		bottomRight,
-		functionToRun,
-	)
+	// Redundant return for readability
+	return topLeft, bottomRight
 }
 
 func (player *Player) setNewPlayerPosition(position tile.Point) {
@@ -246,6 +299,9 @@ func setReferenceTiles(grid *tile.Grid) {
 
 // Returns x,y grid
 func newGrid(x, y int16) *tile.Grid {
+	if x%3 != 0 || y%3 != 0 {
+		panic("grid size needs to be multiple of 3")
+	}
 
 	grid := tile.NewGrid(x, y)
 	log.Print("Created Grid of size ", aurora.Green(grid.Size))
