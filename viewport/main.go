@@ -80,8 +80,8 @@ func (player Player) printViewToTerminal() {
 func (player Player) setPointToTile(point tile.Point, t tile.Tile) {
 	// Get character and its properties for tile
 	character := getCharacterForTile(t[indexMapProperties])
-	// Set terminal point to character with
 
+	// Set terminal point to character found in tile properties
 	player.screen.SetContent(
 		int(point.X),
 		int(point.Y),
@@ -137,6 +137,7 @@ func getCharacterForTile(mapProperties byte) []rune {
 		return []rune{mappings.TerminalRunes[mappings.NonPlayer]}
 	case mappings.GridPlayer:
 		return []rune{mappings.TerminalRunes[mappings.Player]}
+
 	default:
 		return []rune{mappings.TerminalRunes[mappings.None]}
 	}
@@ -162,12 +163,9 @@ func getDefaultPlayerPositionSizeAsPoint() tile.Point {
 func newPlayerView() *Player {
 	grid := newGrid(gridSize, gridSize)
 	setReferenceTiles(grid)
-	// WIP Setup player character
 
 	playerPosition := getDefaultPlayerPositionSizeAsPoint()
 	grid.WriteAt(playerPosition.X, playerPosition.Y, playerTile)
-	//playerPosition := tile.Point{1, 1}
-	//grid.WriteAt(1, 1, playerTile)
 
 	terminalScreen := newTcellScreen()
 
@@ -194,10 +192,19 @@ func newTcellScreen() tcell.Screen {
 }
 
 // This function is a bit doomed to be long due to the offset check
+// needs to exist outside the iterator function passed to the grid.Within(),
+// but I don't like global vars for this sort of stuff.
+// Maybe when I refactor the top level struct to improve cohesion
+// we can put the offset check in a private member on some sub-struct 🤷‍♀️
 func (player Player) updatePlayerView() {
 	topLeft, bottomRight := player.extractPlayerViewCorners()
 
-	// Represents the point values for the first
+	// Represents the point values for the first point.
+	// the way the tile lib iterates over the square it will always begin with
+	// the "0,0" coordinates for said square, so we store those coordinates
+	// and use as offset to where in the terminal to display that exact point.
+	// This means our character will always be in the center of the screen.
+	// TODO give sense of movement !!?
 	offset := tile.Point{}
 	offsetFound := false
 
@@ -246,31 +253,43 @@ func (player Player) iterateOverPlayerView(functionToRun func(point tile.Point, 
 // TODO make this function shorter this is a mess
 // returns topleft, bottomright
 func (player Player) extractPlayerViewCorners() (topLeft, bottomRight tile.Point) {
-	// Going below zero can cause weird overflow, something with tiles lib?
-	topLeft = tile.Point{
-		player.position.X - viewSize/2,
-		player.position.Y - viewSize/2,
+	// Redundant return for readability
+	return calculateViewTopLeftOffset(player.position),
+		calculateViewBottomRightOffset(player.position)
+}
+
+func calculateViewBottomRightOffset(playerPosition tile.Point) tile.Point {
+	// No index issue here so far, just for safety
+	bottomRight := tile.Point{
+		X: playerPosition.X + viewSize/2,
+		Y: playerPosition.Y + viewSize/2,
 	}
-	if player.position.X < viewSize/2 {
+	// Prevent trying to render the grid on max(x|y)
+	if gridSize < playerPosition.X+viewSize/2 {
+		bottomRight.X = gridSize
+	}
+	if gridSize < playerPosition.Y+viewSize/2 {
+		bottomRight.Y = gridSize
+	}
+
+	return bottomRight
+}
+
+func calculateViewTopLeftOffset(playerPosition tile.Point) tile.Point {
+	// Going below zero can cause weird overflow, something with tiles lib?
+	topLeft := tile.Point{
+		X: playerPosition.X - viewSize/2,
+		Y: playerPosition.Y - viewSize/2,
+	}
+	// Prevent trying to render the grid on min(x|y)
+	if playerPosition.X < viewSize/2 {
 		topLeft.X = 0
 	}
-	if player.position.Y < viewSize/2 {
+	if playerPosition.Y < viewSize/2 {
 		topLeft.Y = 0
 	}
 
-	// No index issue here so far, just for safety
-	bottomRight = tile.Point{
-		player.position.X + viewSize/2,
-		player.position.Y + viewSize/2,
-	}
-	if gridSize < player.position.X+viewSize/2 {
-		bottomRight.X = gridSize
-	}
-	if gridSize < player.position.Y+viewSize/2 {
-		bottomRight.Y = gridSize
-	}
-	// Redundant return for readability
-	return topLeft, bottomRight
+	return topLeft
 }
 
 func (player *Player) setNewPlayerPosition(position tile.Point) {
@@ -278,7 +297,7 @@ func (player *Player) setNewPlayerPosition(position tile.Point) {
 	player.position = position
 }
 
-// Sets 00, X,Y and X/2,Y/2 as standard tiles
+// Sets 00, X=Y and X/2,Y/2 as nonstandard tiles
 // For developmental purposes, TODO delete/move this
 func setReferenceTiles(grid *tile.Grid) {
 	grid.Each(func(point tile.Point, _ tile.Tile) {
@@ -290,10 +309,8 @@ func setReferenceTiles(grid *tile.Grid) {
 		grid.WriteAt(i, i, equalPosTile)
 	}
 
-	// Mark Corners for reference
 	grid.WriteAt(0, 0, zeroZeroTile)
 	grid.WriteAt(grid.Size.X-1, grid.Size.Y-1, maxMaxTile)
-	// Mark middle
 	grid.WriteAt(grid.Size.X/2, grid.Size.Y/2, middletile)
 }
 
