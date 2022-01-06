@@ -5,12 +5,13 @@ go 1.16
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/gdamore/tcell v1.4.0
-	github.com/gdamore/tcell/v2 v2.4.0 // indirect
+	github.com/gdamore/tcell/v2 v2.4.1-0.20210905002822-f057f0a857a1 // indirect
 	github.com/kelindar/iostream v1.3.0 // indirect
 	github.com/kelindar/tile v1.2.0
 	github.com/logrusorgru/aurora/v3 v3.0.0
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
 	github.com/mattn/go-runewidth v0.0.13 // indirect
+	github.com/rivo/tview v0.0.0-20220103094729-e3413f80f77b // indirect
 	github.com/stretchr/testify v1.7.0 // indirect
 	golang.org/x/net v0.0.0-20211216030914-fe4d6282115f // indirect
 	golang.org/x/sys v0.0.0-20211216021012-1d35b9e2eb4e // indirect
